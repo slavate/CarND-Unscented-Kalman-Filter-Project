@@ -119,17 +119,17 @@ public:
   /**
   * Generates Sigma Points for UKF. Lesson 7 Chapter 13 - 15.
   */
-  void UKF::GenerateSigmaPoints();
+  void GenerateSigmaPoints();
 
   /**
   * Augments Sigma Points for UKF, i.e.consider process noise as sigma points. Lesson 7 Chapter 16 - 18.
   */
-  void UKF::AugmentedSigmaPoints();
+  void AugmentedSigmaPoints();
   
   /**
   * Predicr Sigma Points. Lesson 7 Chapter 19 - 21.
   */
-  void UKF::SigmaPointPrediction(double delta_t);
+  void SigmaPointPrediction(double delta_t);
 };
 
 #endif /* UKF_H */
