@@ -16,10 +16,10 @@ public:
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
 
-  ///* if this is false, laser measurements will be ignored (except for init)
+  ///* if this is false, laser measurements will be ignored
   bool use_laser_;
 
-  ///* if this is false, radar measurements will be ignored (except for init)
+  ///* if this is false, radar measurements will be ignored
   bool use_radar_;
 
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
@@ -28,6 +28,12 @@ public:
   ///* state covariance matrix
   MatrixXd P_;
 
+  ///* sigma points matrix
+  MatrixXd Xsig_;
+
+  ///* augmented sigma points matrix
+  MatrixXd Xsig_aug_;
+  
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
@@ -67,6 +73,13 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  ///* the current NIS for radar
+  double NIS_radar_;
+
+  ///* the current NIS for laser
+  double NIS_laser_;
+
+
 
   /**
    * Constructor
@@ -102,6 +115,21 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+  
+  /**
+  * Generates Sigma Points for UKF. Lesson 7 Chapter 13 - 15.
+  */
+  void UKF::GenerateSigmaPoints();
+
+  /**
+  * Augments Sigma Points for UKF, i.e.consider process noise as sigma points. Lesson 7 Chapter 16 - 18.
+  */
+  void UKF::AugmentedSigmaPoints();
+  
+  /**
+  * Predicr Sigma Points. Lesson 7 Chapter 19 - 21.
+  */
+  void UKF::SigmaPointPrediction(double delta_t);
 };
 
 #endif /* UKF_H */

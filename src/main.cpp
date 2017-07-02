@@ -1,5 +1,7 @@
 #include <uWS/uWS.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include "json.hpp"
 #include <math.h>
 #include "ukf.h"
@@ -38,7 +40,25 @@ int main()
   vector<VectorXd> estimations;
   vector<VectorXd> ground_truth;
 
-  h.onMessage([&ukf,&tools,&estimations,&ground_truth](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  string out_file_name = "Outfile.txt";
+  ofstream out_file(out_file_name.c_str(), ofstream::out);
+
+  // column names for output file
+  out_file << "sensor_type" << "\t";
+  out_file << "px" << "\t";
+  out_file << "py" << "\t";
+  out_file << "v" << "\t";
+  out_file << "yaw_angle" << "\t";
+  out_file << "yaw_rate" << "\t";
+  out_file << "px_measured" << "\t";
+  out_file << "py_measured" << "\t";
+  out_file << "px_true" << "\t";
+  out_file << "py_true" << "\t";
+  out_file << "vx_true" << "\t";
+  out_file << "vy_true" << "\t";
+  out_file << "NIS" << "\n";
+
+  h.onMessage([&ukf,&tools,&estimations,&ground_truth,&out_file](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -60,23 +80,37 @@ int main()
           
           MeasurementPackage meas_package;
           istringstream iss(sensor_measurment);
-    	  long long timestamp;
+    	    long long timestamp;
 
-    	  // reads first element from the current line
-    	  string sensor_type;
-    	  iss >> sensor_type;
+    	    // reads first element from the current line
+    	    string sensor_type;
+    	    iss >> sensor_type;
 
-    	  if (sensor_type.compare("L") == 0) {
-      	  		meas_package.sensor_type_ = MeasurementPackage::LASER;
-          		meas_package.raw_measurements_ = VectorXd(2);
-          		float px;
-      	  		float py;
-          		iss >> px;
-          		iss >> py;
-          		meas_package.raw_measurements_ << px, py;
-          		iss >> timestamp;
-          		meas_package.timestamp_ = timestamp;
-          } else if (sensor_type.compare("R") == 0) {
+    	    if (sensor_type.compare("L") == 0) {
+                // skip Laser measurements
+                if (!ukf.use_laser_){ 
+                  std::string msg = "42[\"manual\",{}]";
+                  ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+                  return;
+                }
+
+      	  		  meas_package.sensor_type_ = MeasurementPackage::LASER;
+          		  meas_package.raw_measurements_ = VectorXd(2);
+          		  float px;
+      	  		  float py;
+          		  iss >> px;
+          		  iss >> py;
+          		  meas_package.raw_measurements_ << px, py;
+          		  iss >> timestamp;
+          		  meas_package.timestamp_ = timestamp;
+            } 
+            else if (sensor_type.compare("R") == 0) {
+              //skip Radar measurements
+              if (!ukf.use_radar_) {
+                std::string msg = "42[\"manual\",{}]";
+                ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+                return;
+              }
 
       	  		meas_package.sensor_type_ = MeasurementPackage::RADAR;
           		meas_package.raw_measurements_ = VectorXd(3);
@@ -91,43 +125,80 @@ int main()
           		meas_package.timestamp_ = timestamp;
           }
           float x_gt;
-    	  float y_gt;
-    	  float vx_gt;
-    	  float vy_gt;
-    	  iss >> x_gt;
-    	  iss >> y_gt;
-    	  iss >> vx_gt;
-    	  iss >> vy_gt;
-    	  VectorXd gt_values(4);
-    	  gt_values(0) = x_gt;
-    	  gt_values(1) = y_gt; 
-    	  gt_values(2) = vx_gt;
-    	  gt_values(3) = vy_gt;
-    	  ground_truth.push_back(gt_values);
-          
+    	    float y_gt;
+    	    float vx_gt;
+    	    float vy_gt;
+    	    iss >> x_gt;
+    	    iss >> y_gt;
+    	    iss >> vx_gt;
+    	    iss >> vy_gt;
+    	    VectorXd gt_values(4);
+    	    gt_values(0) = x_gt;
+    	    gt_values(1) = y_gt; 
+    	    gt_values(2) = vx_gt;
+    	    gt_values(3) = vy_gt;
+    	    ground_truth.push_back(gt_values);
+
           //Call ProcessMeasurment(meas_package) for Kalman filter
-    	  ukf.ProcessMeasurement(meas_package);    	  
+    	    ukf.ProcessMeasurement(meas_package);
 
-    	  //Push the current estimated x,y positon from the Kalman filter's state vector
+    	    //Push the current estimated x,y positon from the Kalman filter's state vector
+    	    VectorXd estimate(4);
 
-    	  VectorXd estimate(4);
+    	    double p_x = ukf.x_(0);
+    	    double p_y = ukf.x_(1);
+    	    double v  = ukf.x_(2);
+    	    double yaw = ukf.x_(3);
 
-    	  double p_x = ukf.x_(0);
-    	  double p_y = ukf.x_(1);
-    	  double v  = ukf.x_(2);
-    	  double yaw = ukf.x_(3);
+    	    double v1 = cos(yaw)*v;
+    	    double v2 = sin(yaw)*v;
 
-    	  double v1 = cos(yaw)*v;
-    	  double v2 = sin(yaw)*v;
+          // output the estimation
+          out_file << sensor_type << "\t"; // sensor type
+          out_file << p_x << "\t"; // pos1 - est
+          out_file << p_y << "\t"; // pos2 - est
+          out_file << v << "\t"; // vel_abs -est
+          out_file << yaw << "\t"; // yaw_angle -est
+          out_file << ukf.x_(4) << "\t"; // yaw_rate -est
 
-    	  estimate(0) = p_x;
-    	  estimate(1) = p_y;
-    	  estimate(2) = v1;
-    	  estimate(3) = v2;
+          // output the measurements
+          if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+            // output the estimation
+            // p1 - meas
+            out_file << meas_package.raw_measurements_(0) << "\t";
+            // p2 - meas
+            out_file << meas_package.raw_measurements_(1) << "\t";
+          }
+          else if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+            // output the estimation in the cartesian coordinates
+            float ro = meas_package.raw_measurements_(0);
+            float phi = meas_package.raw_measurements_(1);
+            out_file << ro * cos(phi) << "\t"; // p1_meas
+            out_file << ro * sin(phi) << "\t"; // p2_meas
+          }
+
+          // output the ground truth packages
+          out_file << x_gt << "\t";
+          out_file << y_gt << "\t";
+          out_file << vx_gt << "\t";
+          out_file << vy_gt << "\t";
+
+          // output the NIS values
+          if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+            out_file << ukf.NIS_laser_ << "\n";
+          }
+          else if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+            out_file << ukf.NIS_radar_ << "\n";
+          }
+
+    	    estimate(0) = p_x;
+    	    estimate(1) = p_y;
+    	    estimate(2) = v1;
+    	    estimate(3) = v2;
     	  
-    	  estimations.push_back(estimate);
+    	    estimations.push_back(estimate);
 
-    	  VectorXd RMSE = tools.CalculateRMSE(estimations, ground_truth);
+    	    VectorXd RMSE = tools.CalculateRMSE(estimations, ground_truth);
 
           json msgJson;
           msgJson["estimate_x"] = p_x;
@@ -141,8 +212,8 @@ int main()
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 	  
         }
-      } else {
-        
+      } 
+      else {  
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
@@ -175,8 +246,8 @@ int main()
   });
 
   int port = 4567;
-  if (h.listen("127.0.0.1", port))
-  //if (h.listen(port))
+  //if (h.listen("127.0.0.1", port))
+  if (h.listen(port))
   {
     std::cout << "Listening to port " << port << std::endl;
   }
